@@ -3,6 +3,7 @@
 from datetime import datetime
 from elasticsearch import Elasticsearch
 import json
+import re
 import screepsapi
 from settings import getSettings
 import six
@@ -12,6 +13,7 @@ import time
 class ScreepsMarketStats():
 
     es = Elasticsearch()
+    roomRegex = re.compile(r'(E|W)(\d+)(N|S)(\d+)')
 
     def __init__(self, u=None, p=None, ptr=False):
         self.user = u
@@ -66,6 +68,17 @@ class ScreepsMarketStats():
                 order['resourceType'] = resource_type
                 order['tick'] = current_tick
                 order['orderId'] = order['_id']
+
+                if 'roomName' in order:
+                    order['npc'] = self.isNPC(order['roomName'])
+                    room_data = self.getRoomData(order['roomName'])
+                    order['room_x_dir'] = room_data['x_dir']
+                    order['room_x'] = room_data['x']
+                    order['room_y_dir'] = room_data['y_dir']
+                    order['room_y'] = room_data['y']
+                else:
+                    order['npc'] = False
+
                 del order['_id']
                 self.addToES(order)
 
@@ -79,6 +92,23 @@ class ScreepsMarketStats():
 
     def getUserFromRoom(self, room):
         return ''
+
+    def isNPC(self, room):
+        data = self.getRoomData(room)
+        if data['x'] % 5 == 0 or data['x'] == 0:
+            if data['y'] % 5 == 0 or data['y'] == 0:
+                return True
+        return False
+
+    def getRoomData(self, room):
+        match = self.roomRegex.match(room)
+        data = {}
+        data['x_dir'] = match.group(1)
+        data['x'] = int(match.group(2))
+        data['y_dir'] = match.group(3)
+        data['y'] = int(match.group(4))
+        return data
+
 
 if __name__ == "__main__":
     settings = getSettings()
