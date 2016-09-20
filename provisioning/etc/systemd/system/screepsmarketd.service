@@ -1,0 +1,16 @@
+[Unit]
+Description=Screeps Market Statistics Collection
+After=network-online.target
+
+[Service]
+Type=simple
+User=screepsmarketd
+Group=screepsmarketd
+WorkingDirectory=/home/screepsmarketd/
+ExecStart=/usr/local/bin/screepsmarketd
+StandardOutput=syslog
+StandardError=syslog
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
