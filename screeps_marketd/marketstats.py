@@ -40,18 +40,13 @@ class ScreepsMarketStats():
         print ''
         print "Processing market for tick %s" % (current_tick)
         order_index = screeps.orders_index()
-        print json.dumps(order_index)
+
         for order_type in order_index['list']:
             resource_type = order_type['_id']
             print "Processing %s orders" % (resource_type)
-
-            if True:
-                continue
-
             orders = screeps.market_order_by_type(resource_type)
 
             for order in orders['list']:
-                '''
                 if resource_type != 'token':
                     print "    %s %s %s %s %s %s" % (order['_id'],
                                                      order['type'],
@@ -65,7 +60,6 @@ class ScreepsMarketStats():
                                                   resource_type,
                                                   order['amount'],
                                                   order['price'])
-                '''
 
                 # - { _id, type, amount, remainingAmount, price, roomName }
                 order['date'] = current_time
