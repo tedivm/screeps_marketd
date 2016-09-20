@@ -31,9 +31,20 @@ class ScreepsMarketStats():
     __api = False
 
     def run_forever(self):
+        self.usernames = {}
+
+        i = 0
         while True:
             self.run()
-            time.sleep(3)
+
+            print 'Pausing to limit API usage.'
+            time.sleep(9)
+
+            i = i+1
+            # Clear the username cache every half hour
+            if i % 600 == 0:
+                i = 0
+                self.usernames = {}
 
     def run(self):
         screeps = self.getScreepsAPI()
@@ -70,7 +81,12 @@ class ScreepsMarketStats():
                 order['orderId'] = order['_id']
 
                 if 'roomName' in order:
-                    order['npc'] = self.isNPC(order['roomName'])
+                    room = order['roomName']
+                    order['npc'] = self.isNPC(room)
+                    if not order['npc']:
+                        username = self.getUserFromRoom(room)
+                        if username:
+                            order['username'] = username
                     room_data = self.getRoomData(order['roomName'])
                     order['room_x_dir'] = room_data['x_dir']
                     order['room_x'] = room_data['x']
@@ -91,7 +107,16 @@ class ScreepsMarketStats():
         pass
 
     def getUserFromRoom(self, room):
-        return ''
+        if room not in self.usernames:
+            screeps = self.getScreepsAPI()
+            room_overview = screeps.room_overview(room=room)
+
+            if 'owner' in room_overview:
+                if 'username' in room_overview['owner']:
+                    self.usernames[room] = room_overview['owner']['username']
+                    return self.usernames[room]
+            self.usernames[room] = False
+        return self.usernames[room]
 
     def isNPC(self, room):
         data = self.getRoomData(room)
