@@ -3,10 +3,12 @@
 from datetime import datetime
 from elasticsearch import Elasticsearch
 import json
+import os
 import re
 import screepsapi
 from settings import getSettings
 import six
+import sys
 import time
 
 
@@ -19,6 +21,7 @@ class ScreepsMarketStats():
         self.user = u
         self.password = p
         self.ptr = ptr
+        self.settings = getSettings()['marketd']
 
     def getScreepsAPI(self):
         if not self.__api:
@@ -35,14 +38,17 @@ class ScreepsMarketStats():
 
         i = 0
         while True:
-            self.run()
+            try:
+                self.run()
+            except:
+                print("Unexpected error: ", sys.exc_info()[0])
 
             print 'Pausing to limit API usage.'
-            time.sleep(9)
+            time.sleep(self.settings['pause'])
 
             i = i+1
             # Clear the username cache every half hour
-            if i % 600 == 0:
+            if i % self.settings['username_ttl'] == 0:
                 i = 0
                 self.usernames = {}
 
@@ -96,7 +102,16 @@ class ScreepsMarketStats():
                     order['npc'] = False
 
                 del order['_id']
-                self.addToES(order)
+
+                if 'output' in self.settings:
+
+                    if 'elasticsearch' in self.settings['output']:
+                        if self.settings['output']['elasticsearch']:
+                            self.addToES(order)
+
+                    if 'filesystem' in self.settings['output']:
+                        if self.settings['output']['filesystem']:
+                            self.addToFilesystem(order)
 
     def addToES(self, order):
         date_index = time.strftime("%Y_%m")
@@ -104,6 +119,19 @@ class ScreepsMarketStats():
         self.es.index(index=indexname, doc_type="orders", body=order)
 
     def addToFilesystem(self, order):
+        if 'directory' not in self.settings:
+            return False
+
+        order_id = order['orderId']
+        directory = "%s/%s" % (self.settings['directory'], order['tick'])
+        filename = "%s/%s.json" % (directory, order_id)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        with open(filename, 'w') as outfile:
+            json.dump(order, outfile, indent=4)
+
+    def mkdir(directory):
         pass
 
     def getUserFromRoom(self, room):
