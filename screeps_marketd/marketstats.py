@@ -10,6 +10,8 @@ from settings import getSettings
 import six
 import sys
 import time
+import traceback
+
 
 
 class ScreepsMarketStats():
@@ -34,23 +36,25 @@ class ScreepsMarketStats():
     __api = False
 
     def run_forever(self):
-        self.usernames = {}
-
-        i = 0
+        self.buildUsernameMap()
+        lastReset = int(time.time())
         while True:
             try:
                 self.run()
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except:
                 print("Unexpected error: ", sys.exc_info()[0])
+                tb = traceback.format_exc()
+                print tb
 
             print 'Pausing to limit API usage.'
             time.sleep(self.settings['pause'])
 
-            i = i+1
-            # Clear the username cache every half hour
-            if i % self.settings['username_ttl'] == 0:
-                i = 0
-                self.usernames = {}
+            # Clear the username cache periodically.
+            if (int(time.time()) - lastReset) >= self.settings['username_ttl']:
+                lastReset = int(time.time())
+                self.buildUsernameMap()
 
     def run(self):
         screeps = self.getScreepsAPI()
@@ -66,19 +70,6 @@ class ScreepsMarketStats():
             orders = screeps.market_order_by_type(resource_type)
 
             for order in orders['list']:
-                if resource_type != 'token':
-                    print "    %s %s %s %s %s %s" % (order['_id'],
-                                                     order['type'],
-                                                     resource_type,
-                                                     order['amount'],
-                                                     order['price'],
-                                                     order['roomName'])
-                else:
-                    print "    %s %s %s %s %s" % (order['_id'],
-                                                  order['type'],
-                                                  resource_type,
-                                                  order['amount'],
-                                                  order['price'])
 
                 # - { _id, type, amount, remainingAmount, price, roomName }
                 order['date'] = current_time
@@ -105,6 +96,10 @@ class ScreepsMarketStats():
 
                 if 'output' in self.settings:
 
+                    if 'stdout' in self.settings['output']:
+                        if self.settings['output']['stdout']:
+                            self.addToStdOut(order)
+
                     if 'elasticsearch' in self.settings['output']:
                         if self.settings['output']['elasticsearch']:
                             self.addToES(order)
@@ -112,6 +107,28 @@ class ScreepsMarketStats():
                     if 'filesystem' in self.settings['output']:
                         if self.settings['output']['filesystem']:
                             self.addToFilesystem(order)
+
+    def addToStdOut(self, order):
+
+        if order['resourceType'] != 'token':
+            if 'username' in order:
+                user = order['username']
+            else:
+                user = 'npc'
+
+            print "    %s %s %s %s %s %s %s" % (order['orderId'],
+                                                order['type'],
+                                                order['resourceType'],
+                                                order['amount'],
+                                                order['price'],
+                                                order['roomName'],
+                                                user)
+        else:
+            print "    %s %s %s %s %s" % (order['orderId'],
+                                          order['type'],
+                                          order['resourceType'],
+                                          order['amount'],
+                                          order['price'])
 
     def addToES(self, order):
         date_index = time.strftime("%Y_%m")
@@ -131,19 +148,10 @@ class ScreepsMarketStats():
         with open(filename, 'w') as outfile:
             json.dump(order, outfile, indent=4)
 
-    def mkdir(directory):
-        pass
-
     def getUserFromRoom(self, room):
         if room not in self.usernames:
-            screeps = self.getScreepsAPI()
-            room_overview = screeps.room_overview(room=room)
+            return False
 
-            if 'owner' in room_overview:
-                if 'username' in room_overview['owner']:
-                    self.usernames[room] = room_overview['owner']['username']
-                    return self.usernames[room]
-            self.usernames[room] = False
         return self.usernames[room]
 
     def isNPC(self, room):
@@ -161,6 +169,45 @@ class ScreepsMarketStats():
         data['y_dir'] = match.group(3)
         data['y'] = int(match.group(4))
         return data
+
+    def buildUsernameMap(self):
+        print 'building username map'
+        screeps = self.getScreepsAPI()
+        self.usernames = {}
+
+        # worldSize = 60
+        worldSize = self.settings['worldsize']
+        queueLimit = self.settings['queue_limit']
+        # one for the call to screeps.time
+        calls = 1
+        queue = []
+        for x in range(1, worldSize + 1):
+            for y in range(1, worldSize + 1):
+                for horizontal in ['E', 'W']:
+                    for vertical in ['N', 'S']:
+                        room = "%s%s%s%s" % (horizontal, x, vertical, y)
+                        if self.isNPC(room):
+                            continue
+                        queue.append(room)
+
+                if len(queue) < queueLimit:
+                    if y < worldSize or x < worldSize:
+                        continue
+
+                print 'building username map . . .'
+                room_statistics = screeps.map_stats(queue, 'claim0')
+                calls = calls + 1
+                queue = []
+                user_list = room_statistics['users']
+
+                for room, statistics in room_statistics['stats'].items():
+                    if 'own' in statistics:
+                        if 'user' in statistics['own']:
+                            user = statistics['own']['user']
+                            username = user_list[user]['username']
+                            self.usernames[room] = username
+
+                time.sleep(self.settings['api_pause'])
 
 
 if __name__ == "__main__":

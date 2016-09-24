@@ -4,3 +4,18 @@
 screeps_username: 'email@domain.tld'
 screeps_password: 'YourPasswordHere!'
 screeps_ptr: false
+
+marketd:
+  output:
+    stdout: true
+    filesystem: false
+    elasticsearch: true
+  directory:  '/home/screepsmarketd/data'
+
+  # Time between the end of one run and the start of the next.
+  pause: 9
+
+  # How many runs to keep the username cache active.
+  username_ttl: 600
+
+  worldsize: 60
