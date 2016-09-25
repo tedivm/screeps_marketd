@@ -44,11 +44,11 @@ class ScreepsMarketStats():
             except (KeyboardInterrupt, SystemExit):
                 raise
             except:
-                print("Unexpected error: ", sys.exc_info()[0])
+                self.stdout("Unexpected error: ", sys.exc_info()[0])
                 tb = traceback.format_exc()
-                print tb
+                self.stdout(tb)
 
-            print 'Pausing to limit API usage.'
+            self.stdout('Pausing to limit API usage.')
             time.sleep(self.settings['pause'])
 
             # Clear the username cache periodically.
@@ -60,13 +60,13 @@ class ScreepsMarketStats():
         screeps = self.getScreepsAPI()
         current_tick = int(screeps.time())
         current_time = time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        print ''
-        print "Processing market for tick %s" % (current_tick)
+        self.stdout("\n")
+        self.stdout("Processing market for tick %s" % (current_tick))
         order_index = screeps.orders_index()
 
         for order_type in order_index['list']:
             resource_type = order_type['_id']
-            print "Processing %s orders" % (resource_type)
+            self.stdout("Processing %s orders" % (resource_type))
             orders = screeps.market_order_by_type(resource_type)
 
             for order in orders['list']:
@@ -116,19 +116,19 @@ class ScreepsMarketStats():
             else:
                 user = 'npc'
 
-            print "    %s %s %s %s %s %s %s" % (order['orderId'],
+            self.stdout("    %s %s %s %s %s %s %s" % (order['orderId'],
+                                                     order['type'],
+                                                     order['resourceType'],
+                                                     order['amount'],
+                                                     order['price'],
+                                                     order['roomName'],
+                                                     user))
+        else:
+            self.stdout("    %s %s %s %s %s" % (order['orderId'],
                                                 order['type'],
                                                 order['resourceType'],
                                                 order['amount'],
-                                                order['price'],
-                                                order['roomName'],
-                                                user)
-        else:
-            print "    %s %s %s %s %s" % (order['orderId'],
-                                          order['type'],
-                                          order['resourceType'],
-                                          order['amount'],
-                                          order['price'])
+                                                order['price']))
 
     def addToES(self, order):
         date_index = time.strftime("%Y_%m")
@@ -171,7 +171,7 @@ class ScreepsMarketStats():
         return data
 
     def buildUsernameMap(self):
-        print 'building username map'
+        self.stdout('building username map')
         screeps = self.getScreepsAPI()
         self.usernames = {}
 
@@ -194,7 +194,7 @@ class ScreepsMarketStats():
                     if y < worldSize or x < worldSize:
                         continue
 
-                print 'building username map . . .'
+                self.stdout('building username map . . .')
                 room_statistics = screeps.map_stats(queue, 'claim0')
                 calls = calls + 1
                 queue = []
@@ -208,6 +208,10 @@ class ScreepsMarketStats():
                             self.usernames[room] = username
 
                 time.sleep(self.settings['api_pause'])
+
+    def stdout(self, message):
+        print message
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":
