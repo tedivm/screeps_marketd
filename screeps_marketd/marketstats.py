@@ -76,6 +76,7 @@ class ScreepsMarketStats():
                 order['resourceType'] = resource_type
                 order['tick'] = current_tick
                 order['orderId'] = order['_id']
+                order['unitPrice'] = order['price'] / order['amount']
 
                 if 'roomName' in order:
                     room = order['roomName']
