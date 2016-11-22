@@ -77,7 +77,7 @@ class ScreepsMarketStats():
 
             if resource_type not in resources_total:
                 resources_total[resource_type] = {
-                    'resource_type': resource_type,
+                    'resourceType': resource_type,
                     'available_buy': 0,
                     'available_sell': 0,
                     'tick': current_tick,
