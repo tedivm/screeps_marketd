@@ -7,6 +7,7 @@ import os
 import re
 import screepsapi
 from settings import getSettings
+import requests
 import six
 import sys
 import time
@@ -18,6 +19,9 @@ class ScreepsMarketStats():
 
     es = Elasticsearch()
     roomRegex = re.compile(r'(E|W)(\d+)(N|S)(\d+)')
+    allianceUrl = 'http://www.leagueofautomatednations.com/alliances.js'
+    alliances = {}
+
 
     def __init__(self, u=None, p=None, ptr=False):
         self.user = u
@@ -37,6 +41,7 @@ class ScreepsMarketStats():
 
     def run_forever(self):
         self.buildUsernameMap()
+        self.getAllianceData()
         lastReset = int(time.time())
         while True:
             try:
@@ -44,7 +49,7 @@ class ScreepsMarketStats():
             except (KeyboardInterrupt, SystemExit):
                 raise
             except:
-                self.stdout("Unexpected error: ", sys.exc_info()[0])
+                self.stdout("Unexpected error: %s" % (sys.exc_info()[0]))
                 tb = traceback.format_exc()
                 self.stdout(tb)
 
@@ -55,6 +60,7 @@ class ScreepsMarketStats():
             if (int(time.time()) - lastReset) >= self.settings['username_ttl']:
                 lastReset = int(time.time())
                 self.buildUsernameMap()
+                self.getAllianceData()
 
     def run(self):
         screeps = self.getScreepsAPI()
@@ -64,12 +70,38 @@ class ScreepsMarketStats():
         self.stdout("Processing market for tick %s" % (current_tick))
         order_index = screeps.orders_index()
 
+        resources_total = {}
+
         for order_type in order_index['list']:
             resource_type = order_type['_id']
+
+            if resource_type not in resources_total:
+                resources_total[resource_type] = {
+                    'resource_type': resource_type,
+                    'available_buy': 0,
+                    'available_sell': 0,
+                    'tick': current_tick,
+                    'date': current_time
+                    }
+
             self.stdout("Processing %s orders" % (resource_type))
             orders = screeps.market_order_by_type(resource_type)
 
             for order in orders['list']:
+                order_key = "available_%s" % (order['type'])
+                resources_total[resource_type][order_key] += order['amount']
+                if order['type'] == 'buy':
+                    if 'highest_buy' in resources_total[resource_type]:
+                        if resources_total[resource_type]['highest_buy'] < order['price']:
+                            resources_total[resource_type]['highest_buy'] = order['price']
+                    else:
+                        resources_total[resource_type]['highest_buy'] = order['price']
+                else:
+                    if 'lowest_sell' in resources_total[resource_type]:
+                        if resources_total[resource_type]['lowest_sell'] > order['price']:
+                            resources_total[resource_type]['lowest_sell'] = order['price']
+                    else:
+                        resources_total[resource_type]['lowest_sell'] = order['price']
 
                 # - { _id, type, amount, remainingAmount, price, roomName }
                 order['date'] = current_time
@@ -84,6 +116,9 @@ class ScreepsMarketStats():
                         username = self.getUserFromRoom(room)
                         if username:
                             order['username'] = username
+                            alliance = self.getAllianceFromUser(username)
+                            if alliance:
+                                order['alliance'] = alliance
                     room_data = self.getRoomData(order['roomName'])
                     order['room_x_dir'] = room_data['x_dir']
                     order['room_x'] = room_data['x']
@@ -107,6 +142,22 @@ class ScreepsMarketStats():
                     if 'filesystem' in self.settings['output']:
                         if self.settings['output']['filesystem']:
                             self.addToFilesystem(order)
+
+
+        self.stdout('Starting resource totals')
+        date_index = time.strftime("%Y_%m")
+        indexname = 'screeps-resources-' + date_index
+
+        for resource, info in resources_total.items():
+            self.stdout("%s buy: %s" % (resource, info['available_buy']))
+            if 'highest_buy' in info:
+                self.stdout("%s highest_buy: %s" % (resource, info['highest_buy']))
+            self.stdout("%s sell: %s" % (resource, info['available_sell']))
+            if 'lowest_sell' in info:
+                self.stdout("%s lowest_sell: %s" % (resource, info['lowest_sell']))
+            self.es.index(index=indexname, doc_type="resources", body=info)
+
+
 
     def addToStdOut(self, order):
 
@@ -153,6 +204,12 @@ class ScreepsMarketStats():
             return False
 
         return self.usernames[room]
+
+    def getAllianceFromUser(self, username):
+        if username in self.alliances:
+            return self.alliances[username]
+        return False
+
 
     def isNPC(self, room):
         data = self.getRoomData(room)
@@ -208,6 +265,14 @@ class ScreepsMarketStats():
                             self.usernames[room] = username
 
                 time.sleep(self.settings['api_pause'])
+
+
+    def getAllianceData(self):
+        alliances = requests.get(self.allianceUrl).json()
+        for alliance, allianceData in alliances.items():
+            for member in allianceData['members']:
+                self.alliances[member] = alliance
+
 
     def stdout(self, message):
         print message
