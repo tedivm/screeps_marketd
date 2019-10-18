@@ -12,5 +12,5 @@ requests==2.10.0
 Requires==0.0.3
 -e git+https://github.com/screepers/python-screeps.git@5fb556af10c6632d88c672fb88348964e4e11e97#egg=screepsapi
 six==1.10.0
-urllib3==1.15.1
+urllib3==1.24.2
 websocket-client==0.37.0
